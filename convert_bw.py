@@ -19,6 +19,9 @@ def convert_to_black_and_white(directory, threshold=128):
                 # Convert the image to grayscale
                 bw_img = img.convert('L')
 
+                # Apply threshold
+                bw_img = bw_img.point(lambda p: 255 if p > threshold else 0)
+
                 # Save the new black and white image, overwriting or to a new file
                 bw_img.save(os.path.join(directory, f"bw_{filename}"))
 
