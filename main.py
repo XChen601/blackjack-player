@@ -115,10 +115,11 @@ class CardChecker:
                         if self.iou(cluster, existing_cluster) > 0.3:
                             print('replacing')
                             replace = True
+                            # remove old 3 cluster
                             del self.clusters[existing_cluster]
-                            # if existing_name != card_name:
-                            #     self.clusters[cluster] = card_name
-                            #     break
+                            # add 8 cluster
+                            self.clusters[cluster] = card_name
+
 
                     if not replace:
                         self.clusters[cluster] = card_name
