@@ -82,7 +82,7 @@ class CardChecker:
 
     def iou(self, boxA, boxB):
         # Debugging: print boxes before processing
-        print("Calculating IoU for:", boxA, "and", boxB)
+        # print("Calculating IoU for:", boxA, "and", boxB)
 
         # Validate input boxes
         if len(boxA) != 4 or len(boxB) != 4:
@@ -119,7 +119,7 @@ class CardChecker:
 
                     if not replace:
                         self.clusters[cluster] = card_name
-        print(self.clusters)
+
         cards = []
         for card in self.clusters.values():
             cards.append(card)
@@ -127,7 +127,7 @@ class CardChecker:
 
 class BlackjackPlayer:
     def __init__(self):
-        self.game_coordinates = [(2065, 727), (3671, 1628)]
+        self.game_coordinates = [(2360, 778), (3740, 1541)]
         self.card_checker = CardChecker()
         self.move_counts = 400
 
@@ -158,6 +158,54 @@ class BlackjackPlayer:
         top_part.save(save_path1)
         bottom_part.save(save_path2)
 
+    def start_game(self):
+        for i in range(self.move_counts):
+            self.get_bj_image(self.game_coordinates[0][0], self.game_coordinates[0][1],
+                              self.game_coordinates[1][0], self.game_coordinates[1][1])
+
+            self.make_move()
+    def make_move(self):
+        # check if respin or no action
+        print('checking for respin/insurance')
+        if self.is_round_end():
+            self.click_image('actions/respin.png')
+            print('Respin')
+            return
+        if self.is_insurance():
+            self.click_image('actions/no.png')
+            print('No')
+            return
+        print('finish check')
+        dealer_hand = self.card_checker.get_cards('dealer.png', 'cards')
+        if len(dealer_hand) != 1:
+            return
+        player_hand = self.card_checker.get_cards('player.png', 'cards')
+        print('dealer hand:', dealer_hand)
+        print('player hand:', player_hand)
+        if len(dealer_hand) == 0 or len(player_hand) < 2:
+            print('error getting cards')
+            return
+
+
+        move = self.determine_move(player_hand, dealer_hand)
+        print(move)
+
+        self.click_move(move)
+            # after clicking split, while loop to check right hand while
+        if move == 'Split':
+            self.play_split(dealer_hand)
+            self.play_split(dealer_hand, right=False)
+    def click_move(self, move):
+        if move == 'Hit':
+            self.click_image('actions/hit.png')
+        if move == 'Stand':
+            self.click_image('actions/stand.png')
+        if move == 'Double':
+            self.click_image('actions/double.png')
+        if move == 'Split':
+            self.click_image('actions/split.png')
+            print('split triggered')
+            time.sleep(9999999)
     def get_split(self, player_image_path):
         img = Image.open(player_image_path)
         width, height = img.size
@@ -169,65 +217,60 @@ class BlackjackPlayer:
         left_part.save('left_hand.png')
         right_part.save('right_hand.png')
 
-    def check_split(self):
-        # get current image, check left and sides, if both left and right has number, its split
+    def play_split(self, dealer_hand, right=True):
+        if not right:
+            print('playing left')
+        print('playing split')
+        if right:
+            img = 'right_hand.png'
+        else:
+            img = 'left_hand.png'
         self.get_bj_image(self.game_coordinates[0][0], self.game_coordinates[0][1],
                           self.game_coordinates[1][0], self.game_coordinates[1][1])
         self.get_split('player.png')
-
-        left_hand = self.card_checker.get_cards("left_hand.png", "cards")
-        right_hand = self.card_checker.get_cards('right_hand.png', "cards")
-
-        if left_hand and right_hand:
-            return True
-        return False
-
-    def start_game(self):
-        # print(self.check_split())
-        # time.sleep(10000)
-        for i in range(self.move_counts):
+        arrow = self.find_template_in_image(img, 'arrow.png', threshold=0.7)
+        print(arrow)
+        # while arrow in image
+        while arrow:
+            # get current image, check left and sides, if both left and right has number, its split
             self.get_bj_image(self.game_coordinates[0][0], self.game_coordinates[0][1],
                               self.game_coordinates[1][0], self.game_coordinates[1][1])
+            self.get_split('player.png')
+            if right:
+                hand = self.card_checker.get_cards('right_hand.png', "cards")
+            else:
+                hand = self.card_checker.get_cards("left_hand.png", "cards")
+            print(hand)
+            move = self.determine_move(hand, dealer_hand)
+            print(move)
+            self.click_move(move)
+            arrow = self.find_template_in_image(img, 'arrow.png', threshold=0.7)
 
-            self.make_move()
-    def make_move(self):
-        # check if respin or no action
-        if self.is_round_end():
-            self.click_image('actions/respin.png')
-            print('Respin')
-            return
-        if self.is_insurance():
-            self.click_image('actions/no.png')
-            print('No')
-            return
-        self.get_bj_image(self.game_coordinates[0][0], self.game_coordinates[0][1],
-                          self.game_coordinates[1][0], self.game_coordinates[1][1])
-        dealer_hand = self.card_checker.get_cards('dealer.png', 'cards')
-        if '3' in dealer_hand and '8' in dealer_hand:
-            dealer_hand = ['8']
-        player_hand = self.card_checker.get_cards('player.png', 'cards')
-        print('dealer hand:', dealer_hand)
-        print('player hand:', player_hand)
-        if len(dealer_hand) == 0 or len(player_hand) < 2:
-            print('error getting cards')
-            return
-        if len(dealer_hand) != 1:
-            return
 
-        move = self.determine_move(player_hand, dealer_hand)
-        print(move)
 
-        if move == 'Hit':
-            self.click_image('actions/hit.png')
-        if move == 'Stand':
-            self.click_image('actions/stand.png')
-        if move == 'Double':
-            self.click_image('actions/double.png')
-        if move == 'Split':
-            self.click_image('actions/split.png')
-            print('split triggered')
-            time.sleep(9999999)
-        time.sleep(4)
+    def find_template_in_image(self, main_image_path, template_image_path, threshold=.8):
+        # Load the main image and template image
+        main_image = cv2.imread(main_image_path)
+        template = cv2.imread(template_image_path)
+
+        # Convert images to grayscale
+        main_gray = cv2.cvtColor(main_image, cv2.COLOR_BGR2GRAY)
+        template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+
+        # Perform template matching
+        result = cv2.matchTemplate(main_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+
+        # Get the location of the best match
+        min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
+
+        # Calculate the center of the found template
+        if max_val >= threshold:
+            center_x = max_loc[0] + template.shape[1] // 2
+            center_y = max_loc[1] + template.shape[0] // 2
+            return center_x, center_y
+        else:
+            return None
+
     def get_region(self):
         width = self.game_coordinates[1][0] - self.game_coordinates[0][0]
         height = self.game_coordinates[1][1] - self.game_coordinates[0][1]
@@ -240,7 +283,6 @@ class BlackjackPlayer:
 
         curr_location = pyautogui.position()
         location = pyautogui.locateCenterOnScreen(image_path, region=region, confidence=0.7)
-        print(location)
         pyautogui.click(location)
         pyautogui.moveTo(curr_location[0], curr_location[1])
 
@@ -260,7 +302,7 @@ class BlackjackPlayer:
             return True
         return False
 
-    def determine_move(self, player_hand, dealer_hand):
+    def determine_move(self, player_hand, dealer_hand, can_split=True):
         def calculate_total(hand):
             soft = False
             total = 0
@@ -285,7 +327,6 @@ class BlackjackPlayer:
         player_total, soft = calculate_total(player_hand)
         dealer_total, _ = calculate_total(dealer_hand)
 
-        print("soft:", soft)
         # conditions for double
         if ((len(player_hand) == 2) and
                 (((3 <= dealer_total <= 6) and player_total == 9)
@@ -296,9 +337,8 @@ class BlackjackPlayer:
                 or ((3 <= dealer_total <= 6) and player_total in (17, 18) and soft))):
             return 'Double'
         # conditions for splitting
-        if (len(player_hand) == 2) and (player_hand[0] == player_hand[1]):
+        if (len(player_hand) == 2) and (player_hand[0] == player_hand[1] and can_split):
             card = player_hand[0]
-            print(card)
             if (card in ['a', '8']
                     or (card in ("2", "3") and dealer_total <= 7)
                     or card == '4' and dealer_total in [5, 6]
