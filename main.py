@@ -71,10 +71,10 @@ class CardChecker:
         # Convert color back to RGB for displaying in matplotlib
         main_image = cv2.cvtColor(main_image, cv2.COLOR_BGR2RGB)
 
-        # # Display using matplotlib
-        # plt.imshow(main_image)
-        # plt.title('Matched Image')
-        # plt.show()
+        # Display using matplotlib
+        plt.imshow(main_image)
+        plt.title('Matched Image')
+        plt.show()
 
         # print(f"{template_image_path} appears {count} times.")
         return found_clusters
@@ -98,6 +98,7 @@ class CardChecker:
         boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
 
         iou = interArea / float(boxAArea + boxBArea - interArea)
+        print(iou)
         return iou
 
     def get_cards(self, main_image_path, image_directory):
@@ -111,15 +112,17 @@ class CardChecker:
                 for cluster in new_clusters:
                     replace = False
                     for existing_cluster, existing_name in list(self.clusters.items()):
-                        if self.iou(cluster, existing_cluster) > 0.5:
+                        if self.iou(cluster, existing_cluster) > 0.3:
+                            print('replacing')
                             replace = True
-                            if existing_name != card_name:
-                                self.clusters[cluster] = card_name
-                                break
+                            del self.clusters[existing_cluster]
+                            # if existing_name != card_name:
+                            #     self.clusters[cluster] = card_name
+                            #     break
 
                     if not replace:
                         self.clusters[cluster] = card_name
-
+        print(self.clusters)
         cards = []
         for card in self.clusters.values():
             cards.append(card)
@@ -177,6 +180,7 @@ class BlackjackPlayer:
             return
         print('finish check')
         dealer_hand = self.card_checker.get_cards('dealer.png', 'cards')
+        print(dealer_hand)
         if len(dealer_hand) != 1:
             return
         player_hand = self.card_checker.get_cards('player.png', 'cards')
