@@ -8,6 +8,8 @@ from sklearn.cluster import DBSCAN
 import time
 
 class CardChecker:
+    def __init__(self):
+        self.clusters = {}
     def convert_to_bw(self, image_path):
         with Image.open(image_path) as img:
             bw_img = img.convert('L')  # Convert image to grayscale
@@ -21,20 +23,20 @@ class CardChecker:
 
         if main_image is None or template_image is None:
             print("Error loading images.")
-            return
+            return []
 
         main_gray = cv2.cvtColor(main_image, cv2.COLOR_BGR2GRAY)
         template_gray = cv2.cvtColor(template_image, cv2.COLOR_BGR2GRAY)
 
         # Define the scale range and the scaling factor
-        scale_range = np.linspace(0.6, 1.1, 7)  # Example range from 0.5x to 1.5x original size
+        scale_range = np.linspace(0.7, 1.5, 7)  # Example range from 0.5x to 1.5x original size
         match_results = []
 
         for scale in scale_range:
             # Resize the main image according to the current scale
             resized_main = cv2.resize(main_gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
             res = cv2.matchTemplate(resized_main, template_gray, cv2.TM_CCOEFF_NORMED)
-            threshold = 0.85
+            threshold = 0.86
             loc = np.where(res >= threshold)
             if loc[0].size > 0:
                 for pt in zip(*loc[::-1]):
@@ -44,7 +46,7 @@ class CardChecker:
         points = np.array(match_results)
 
         if points.size == 0:
-            return 0
+            return []
 
         # Use DBSCAN to cluster points
         clustering = DBSCAN(eps=10, min_samples=1).fit(points)
@@ -52,6 +54,7 @@ class CardChecker:
         unique_labels = set(labels)
 
         count = 0
+        found_clusters = []
 
         # Draw rectangles based on the clusters
         for label in unique_labels:
@@ -63,6 +66,7 @@ class CardChecker:
             bottom_right = (int(x_max + width), int(y_max + height))
             cv2.rectangle(main_image, top_left, bottom_right, (0, 255, 0), 2)
             count += 1
+            found_clusters.append((x_min, y_min, x_max + width, y_max + height))
 
         # Convert color back to RGB for displaying in matplotlib
         main_image = cv2.cvtColor(main_image, cv2.COLOR_BGR2RGB)
@@ -73,21 +77,52 @@ class CardChecker:
         # plt.show()
 
         # print(f"{template_image_path} appears {count} times.")
-        return count
+        return found_clusters
+
+
+    def iou(self, boxA, boxB):
+        # Debugging: print boxes before processing
+        print("Calculating IoU for:", boxA, "and", boxB)
+
+        # Validate input boxes
+        if len(boxA) != 4 or len(boxB) != 4:
+            raise ValueError("Both boxes must have exactly four elements (x_min, y_min, x_max, y_max).")
+
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[2], boxB[2])
+        yB = min(boxA[3], boxB[3])
+
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        boxAArea = (boxA[2] - boxA[0]) * (boxA[3] - boxA[1])
+        boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
+
+        iou = interArea / float(boxAArea + boxBArea - interArea)
+        return iou
 
     def get_cards(self, main_image_path, image_directory):
-        cards = []
+        self.clusters = {}
         for filename in os.listdir(image_directory):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff')):
-                # Construct the full file path
                 image_path = os.path.join(image_directory, filename)
+                new_clusters = self.count_appearance(main_image_path, image_path)
+                card_name = filename.split('.')[0]
 
-                count = self.count_appearance(main_image_path, image_path)
+                for cluster in new_clusters:
+                    replace = False
+                    for existing_cluster, existing_name in list(self.clusters.items()):
+                        if self.iou(cluster, existing_cluster) > 0.5:
+                            replace = True
+                            if existing_name != card_name:
+                                self.clusters[cluster] = card_name
+                                break
 
-                for i in range(count):
-                    card_name = filename.split('.')[0]
-                    cards.append(card_name)
-        # print(cards)
+                    if not replace:
+                        self.clusters[cluster] = card_name
+        print(self.clusters)
+        cards = []
+        for card in self.clusters.values():
+            cards.append(card)
         return cards
 
 class BlackjackPlayer:
@@ -123,7 +158,33 @@ class BlackjackPlayer:
         top_part.save(save_path1)
         bottom_part.save(save_path2)
 
+    def get_split(self, player_image_path):
+        img = Image.open(player_image_path)
+        width, height = img.size
+        split_point = int(width * .48)
+
+        left_part = img.crop((0, 0, split_point, height))
+        right_part = img.crop((split_point, 0, width, height))
+
+        left_part.save('left_hand.png')
+        right_part.save('right_hand.png')
+
+    def check_split(self):
+        # get current image, check left and sides, if both left and right has number, its split
+        self.get_bj_image(self.game_coordinates[0][0], self.game_coordinates[0][1],
+                          self.game_coordinates[1][0], self.game_coordinates[1][1])
+        self.get_split('player.png')
+
+        left_hand = self.card_checker.get_cards("left_hand.png", "cards")
+        right_hand = self.card_checker.get_cards('right_hand.png', "cards")
+
+        if left_hand and right_hand:
+            return True
+        return False
+
     def start_game(self):
+        # print(self.check_split())
+        # time.sleep(10000)
         for i in range(self.move_counts):
             self.get_bj_image(self.game_coordinates[0][0], self.game_coordinates[0][1],
                               self.game_coordinates[1][0], self.game_coordinates[1][1])
@@ -142,6 +203,8 @@ class BlackjackPlayer:
         self.get_bj_image(self.game_coordinates[0][0], self.game_coordinates[0][1],
                           self.game_coordinates[1][0], self.game_coordinates[1][1])
         dealer_hand = self.card_checker.get_cards('dealer.png', 'cards')
+        if '3' in dealer_hand and '8' in dealer_hand:
+            dealer_hand = ['8']
         player_hand = self.card_checker.get_cards('player.png', 'cards')
         print('dealer hand:', dealer_hand)
         print('player hand:', player_hand)
@@ -163,6 +226,7 @@ class BlackjackPlayer:
         if move == 'Split':
             self.click_image('actions/split.png')
             print('split triggered')
+            time.sleep(9999999)
         time.sleep(4)
     def get_region(self):
         width = self.game_coordinates[1][0] - self.game_coordinates[0][0]
@@ -175,7 +239,8 @@ class BlackjackPlayer:
         region = self.get_region()
 
         curr_location = pyautogui.position()
-        location = pyautogui.locateCenterOnScreen(image_path, region=region, confidence=0.8)
+        location = pyautogui.locateCenterOnScreen(image_path, region=region, confidence=0.7)
+        print(location)
         pyautogui.click(location)
         pyautogui.moveTo(curr_location[0], curr_location[1])
 
@@ -221,8 +286,6 @@ class BlackjackPlayer:
         dealer_total, _ = calculate_total(dealer_hand)
 
         print("soft:", soft)
-        if player_total <= 8:
-            return 'Hit'
         # conditions for double
         if ((len(player_hand) == 2) and
                 (((3 <= dealer_total <= 6) and player_total == 9)
@@ -235,8 +298,10 @@ class BlackjackPlayer:
         # conditions for splitting
         if (len(player_hand) == 2) and (player_hand[0] == player_hand[1]):
             card = player_hand[0]
+            print(card)
             if (card in ['a', '8']
                     or (card in ("2", "3") and dealer_total <= 7)
+                    or card == '4' and dealer_total in [5, 6]
                     or (card == "6" and dealer_total <= 6)
                     or (card == "7" and dealer_total <= 7)
                     or (card == "9" and (dealer_total <= 6 or dealer_total in (8, 9)))):
