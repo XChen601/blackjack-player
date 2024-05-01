@@ -134,11 +134,11 @@ class CardChecker:
 
 class BlackjackPlayer:
     def __init__(self):
-        self.antibot = False
+        self.antibot = True
         self.cursor = SystemCursor()
-        self.game_coordinates = [(2300, 783), (3691, 1563)]
+        self.game_coordinates = [(0, 0), (0, 0)]
         self.card_checker = CardChecker()
-        self.rounds = 30
+        self.rounds = 850
         self.curr_round = 0
 
         self.game_img_path = "game.png"
@@ -147,14 +147,96 @@ class BlackjackPlayer:
 
 
     def start_game(self):
+        self.get_board_coordinates()
         while self.curr_round < self.rounds:
             print('Round:', self.curr_round)
             self.update_game_images()
-
             self.play_round()
 
+    def play_round(self):
+        # check if respin or no insurance btn
+        if self.click_image('actions/respin.png'):
+            print('Respin | round + 1')
+            self.curr_round += 1
+            time.sleep(3.5)
+            return
+        if self.click_image('actions/no.png'):
+            print('No insurance')
+        dealer_hand = self.card_checker.get_cards('dealer.png', 'cards')
+        print('dealer hand:', dealer_hand)
+        if len(dealer_hand) != 1:
+            return
+        player_hand = self.card_checker.get_cards('player.png', 'cards')
+        print('player hand:', player_hand)
+        if len(dealer_hand) == 0 or len(player_hand) < 2:
+            print('error getting cards')
+            return
+
+        move = self.determine_move(player_hand, dealer_hand)
+        print(move)
+        if move == 'Split':
+            self.click_move(move)
+            self.play_split(dealer_hand)
+            time.sleep(2)
+            self.play_split(dealer_hand, right=False)
+        else:
+            self.click_move(move)
+
+
+    def get_board_coordinates(self):
+        top_left_coords = self.find_image_on_screen("board_top_left.png")
+        bottom_right_coords = self.find_image_on_screen("board_bottom_right.png")
+        self.game_coordinates = [top_left_coords, bottom_right_coords]
+        print("game coordinates:", self.game_coordinates)
+
+    # finds an image on screen, in a certain region, or inside another image
+    def find_image_on_screen(self, image_path, main_image_path=None, region=None, threshold=0.75):
+        # Load the image from the path
+        template = cv2.imread(image_path, 0)
+
+
+        if template is None:
+            raise ValueError("Image not found at the specified path")
+
+        # Capture the screen or a specific region
+        if region:
+            # region should be (left, top, width, height)
+            screen = pyautogui.screenshot(region=region)
+        else:
+            screen = pyautogui.screenshot()
+
+        if main_image_path:
+            screen = cv2.imread(main_image_path)
+
+        screen_np = np.array(screen)
+        screen_gray = cv2.cvtColor(screen_np, cv2.COLOR_BGR2GRAY)
+
+        scale_range = np.linspace(0.8, 1.5, 15)
+        # Try different scales
+        for scale in scale_range:
+            # Resize the template
+            resized_template = cv2.resize(template, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+
+            # Match the template
+            res = cv2.matchTemplate(screen_gray, resized_template, cv2.TM_CCOEFF_NORMED)
+
+            # Check for a match
+            if np.max(res) >= threshold:
+                loc = np.where(res >= threshold)
+                for pt in zip(*loc[::-1]):  # Switch x and y positions
+                    # Calculate center
+                    center_x = pt[0] + resized_template.shape[1] // 2
+                    center_y = pt[1] + resized_template.shape[0] // 2
+                    # Adjust center coordinates if a region was specified
+                    if region:
+                        center_x += region[0]
+                        center_y += region[1]
+                    return center_x, center_y
+
+        return None  # Return None if no matching area is found at any scale
+
     def update_game_images(self):
-        cut_side_ratio = .07
+        cut_side_ratio = 0
         top_left_x = self.game_coordinates[0][0] * (1 + cut_side_ratio)
         top_left_y = self.game_coordinates[0][1]
         bottom_right_x = self.game_coordinates[1][0] * (1 - cut_side_ratio)
@@ -184,37 +266,6 @@ class BlackjackPlayer:
         top_part.save(self.dealer_img_path)
         bottom_part.save(self.player_img_path)
 
-    def play_round(self):
-        # check if respin or no insurance btn
-        if self.is_round_end():
-            self.click_image('actions/respin.png')
-            self.curr_round += 1
-            print('Respin')
-            return
-        if self.is_insurance():
-            self.click_image('actions/no.png')
-            print('No')
-            return
-        dealer_hand = self.card_checker.get_cards('dealer.png', 'cards')
-        print('dealer hand:', dealer_hand)
-        if len(dealer_hand) != 1:
-            return
-        player_hand = self.card_checker.get_cards('player.png', 'cards')
-        print('player hand:', player_hand)
-        if len(dealer_hand) == 0 or len(player_hand) < 2:
-            print('error getting cards')
-            return
-
-        move = self.determine_move(player_hand, dealer_hand)
-        print(move)
-        if move == 'Split':
-            self.click_move(move)
-            self.play_split(dealer_hand)
-            time.sleep(2)
-            self.play_split(dealer_hand, right=False)
-        else:
-            self.click_move(move)
-
     def click_move(self, move):
         if move == 'Hit':
             self.click_image('actions/hit.png')
@@ -225,8 +276,11 @@ class BlackjackPlayer:
             self.curr_round += 1
             self.click_image('actions/double.png')
         if move == 'Split':
-            self.curr_round += 1
-            self.click_image('actions/split.png')
+            if self.click_image('actions/split.png'):
+                self.curr_round += 1
+            else:
+                print('split error')
+
         time.sleep(1)  # ensures the cards are updated before updating image
 
     def update_splitted_hands(self, player_image_path):
@@ -273,7 +327,7 @@ class BlackjackPlayer:
         print(img)
         self.update_game_images()
         self.update_splitted_hands(self.player_img_path)
-        arrow = self.find_template_in_image(img, 'arrow.png', threshold=0.7)
+        arrow = self.find_image_on_screen('arrow.png', img, threshold=0.7)
         print(arrow)
         # while arrow in image
         while arrow:
@@ -283,13 +337,13 @@ class BlackjackPlayer:
             else:
                 hand = self.card_checker.get_cards("left_hand.png", "cards")
             print(hand)
-            move = self.determine_move(hand, dealer_hand)
+            move = self.determine_move(hand, dealer_hand, can_split=False)
             print(move)
             self.click_move(move)
             time.sleep(1)
             self.update_game_images()
             self.update_splitted_hands(self.player_img_path)
-            arrow = self.find_template_in_image(img, 'arrow.png', threshold=0.7)
+            arrow = self.find_image_on_screen('arrow.png', img, threshold=0.7)
 
     def get_region(self):
         width = self.game_coordinates[1][0] - self.game_coordinates[0][0]
@@ -301,33 +355,37 @@ class BlackjackPlayer:
         # limit search region so it faster
         region = self.get_region()
 
-        location = pyautogui.locateCenterOnScreen(image_path, region=region, confidence=0.75)
+        location = self.find_image_on_screen(image_path, region=region)
+        if not location:
+            print('wtf')
         curr_location = pyautogui.position()
         if not location:
-            return
+            return False
 
         if self.antibot:
-            random_x = random.randint(-30, 30)
-            random_y = random.randint(-30, 30)
-            self.cursor.move_to([location.x + random_x, location.y + random_y])
-            pyautogui.click(location.x + random_x, location.y + random_y)
-            self.cursor.move_to([curr_location[0] + random_x, curr_location[1] + random_y])
+            random_x = location[0] + random.randint(-30, 30)
+            random_y = location[1] + random.randint(-30, 30)
+            self.cursor.move_to([random_x, random_y])
+            pyautogui.click(random_x, random_y)
+            self.cursor.move_to([curr_location[0], curr_location[1]])
 
         else:
             pyautogui.click(location)
             time.sleep(.1)
             pyautogui.moveTo(curr_location[0], curr_location[1])
 
+        return True
+
     def is_round_end(self):
         region = self.get_region()
-        location = pyautogui.locateCenterOnScreen('actions/respin.png', region=region, confidence=0.7)
+        location = self.find_image_on_screen('actions/respin.png', region=region)
         if location:
             return True
         return False
 
     def is_insurance(self):
         region = self.get_region()
-        location = pyautogui.locateCenterOnScreen('actions/no.png', region=region, confidence=0.7)
+        location = self.find_image_on_screen('actions/no.png', region=region)
 
         if location:
             return True
