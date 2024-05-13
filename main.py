@@ -32,7 +32,7 @@ class CardChecker:
         template_gray = cv2.cvtColor(template_image, cv2.COLOR_BGR2GRAY)
 
         # Define the scale range and the scaling factor
-        scale_range = np.linspace(0.8, 1.5, 6)  # Example range from 0.5x to 1.5x original size
+        scale_range = np.linspace(0.8, 1.5, 10)  # Example range from 0.5x to 1.5x original size
         match_results = []
 
         for scale in scale_range:
@@ -134,20 +134,21 @@ class CardChecker:
 
 class BlackjackPlayer:
     def __init__(self):
-        self.antibot = True
+        self.antibot = False
         self.cursor = SystemCursor()
         self.game_coordinates = [(0, 0), (0, 0)]
         self.card_checker = CardChecker()
-        self.rounds = 850
+        self.rounds = 400
         self.curr_round = 0
 
-        self.game_img_path = "game.png"
-        self.dealer_img_path = "dealer.png"
-        self.player_img_path = "player.png"
+        self.board_img_path = "game_images/full_board.png"
+        self.dealer_img_path = "game_images/dealer.png"
+        self.player_img_path = "game_images/player.png"
 
 
     def start_game(self):
         self.get_board_coordinates()
+
         while self.curr_round < self.rounds:
             print('Round:', self.curr_round)
             self.update_game_images()
@@ -162,11 +163,11 @@ class BlackjackPlayer:
             return
         if self.click_image('actions/no.png'):
             print('No insurance')
-        dealer_hand = self.card_checker.get_cards('dealer.png', 'cards')
+        dealer_hand = self.card_checker.get_cards(self.dealer_img_path, 'cards')
         print('dealer hand:', dealer_hand)
         if len(dealer_hand) != 1:
             return
-        player_hand = self.card_checker.get_cards('player.png', 'cards')
+        player_hand = self.card_checker.get_cards(self.player_img_path, 'cards')
         print('player hand:', player_hand)
         if len(dealer_hand) == 0 or len(player_hand) < 2:
             print('error getting cards')
@@ -184,8 +185,8 @@ class BlackjackPlayer:
 
 
     def get_board_coordinates(self):
-        top_left_coords = self.find_image_on_screen("board_top_left.png")
-        bottom_right_coords = self.find_image_on_screen("board_bottom_right.png")
+        top_left_coords = self.find_image_on_screen("board_top_left.png")['top_left']
+        bottom_right_coords = self.find_image_on_screen("board_bottom_right.png")['bottom_right']
         self.game_coordinates = [top_left_coords, bottom_right_coords]
         print("game coordinates:", self.game_coordinates)
 
@@ -193,14 +194,11 @@ class BlackjackPlayer:
     def find_image_on_screen(self, image_path, main_image_path=None, region=None, threshold=0.75):
         # Load the image from the path
         template = cv2.imread(image_path, 0)
-
-
         if template is None:
             raise ValueError("Image not found at the specified path")
 
         # Capture the screen or a specific region
         if region:
-            # region should be (left, top, width, height)
             screen = pyautogui.screenshot(region=region)
         else:
             screen = pyautogui.screenshot()
@@ -211,29 +209,43 @@ class BlackjackPlayer:
         screen_np = np.array(screen)
         screen_gray = cv2.cvtColor(screen_np, cv2.COLOR_BGR2GRAY)
 
-        scale_range = np.linspace(0.8, 1.5, 15)
-        # Try different scales
+        scale_range = np.linspace(0.7, 1.5, 15)
         for scale in scale_range:
-            # Resize the template
             resized_template = cv2.resize(template, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-
-            # Match the template
             res = cv2.matchTemplate(screen_gray, resized_template, cv2.TM_CCOEFF_NORMED)
 
-            # Check for a match
             if np.max(res) >= threshold:
                 loc = np.where(res >= threshold)
                 for pt in zip(*loc[::-1]):  # Switch x and y positions
-                    # Calculate center
+                    # Calculate coordinates
+                    top_left_x = pt[0]
+                    top_left_y = pt[1]
+                    bottom_right_x = pt[0] + resized_template.shape[1]
+                    bottom_right_y = pt[1] + resized_template.shape[0]
                     center_x = pt[0] + resized_template.shape[1] // 2
                     center_y = pt[1] + resized_template.shape[0] // 2
-                    # Adjust center coordinates if a region was specified
+
+                    # Adjust coordinates if a region was specified
                     if region:
+                        top_left_x += region[0]
+                        top_left_y += region[1]
+                        bottom_right_x += region[0]
+                        bottom_right_y += region[1]
                         center_x += region[0]
                         center_y += region[1]
-                    return center_x, center_y
 
-        return None  # Return None if no matching area is found at any scale
+                    # Return coordinates in a dictionary
+                    return {
+                        'top_left': (top_left_x, top_left_y),
+                        'center': (center_x, center_y),
+                        'bottom_right': (bottom_right_x, bottom_right_y)
+                    }
+
+        return {
+            'top_left': None,
+            'center': None,
+            'bottom_right': None
+        } # Return None if no matching area is found at any scale
 
     def update_game_images(self):
         cut_side_ratio = 0
@@ -248,8 +260,8 @@ class BlackjackPlayer:
         screenshot = pyautogui.screenshot(region=(top_left_x, top_left_y, width, height))
 
         # Save the screenshot
-        screenshot.save(self.game_img_path)
-        self.save_player_dealer_images(self.game_img_path)
+        screenshot.save(self.board_img_path)
+        self.save_player_dealer_images(self.board_img_path)
 
     def save_player_dealer_images(self, game_image_path, split_percentage=0.4):
         img = Image.open(game_image_path)
@@ -280,6 +292,7 @@ class BlackjackPlayer:
                 self.curr_round += 1
             else:
                 print('split error')
+                time.sleep(15)
 
         time.sleep(1)  # ensures the cards are updated before updating image
 
@@ -291,8 +304,8 @@ class BlackjackPlayer:
         left_part = img.crop((0, 0, split_point, height))
         right_part = img.crop((split_point, 0, width, height))
 
-        left_part.save('left_hand.png')
-        right_part.save('right_hand.png')
+        left_part.save('game_images/left_hand.png')
+        right_part.save('game_images/right_hand.png')
 
 
     def find_template_in_image(self, main_image_path, template_image_path, threshold=.8):
@@ -321,29 +334,38 @@ class BlackjackPlayer:
 
     def play_split(self, dealer_hand, right=True):
         if right:
-            img = 'right_hand.png'
+            img = 'game_images/right_hand.png'
         else:
-            img = 'left_hand.png'
+            img = 'game_images/left_hand.png'
         print(img)
         self.update_game_images()
         self.update_splitted_hands(self.player_img_path)
-        arrow = self.find_image_on_screen('arrow.png', img, threshold=0.7)
+        arrow = self.find_image_on_screen('actions/arrow.png', img, threshold=0.85)['center']
         print(arrow)
+
+        hand = self.card_checker.get_cards(img, "cards")
+        while len(hand) > 2:
+            print(' error with getting cards ')
+            time.sleep(1)
         # while arrow in image
         while arrow:
             # get current image, check left and sides, if both left and right has number, its split
             if right:
-                hand = self.card_checker.get_cards('right_hand.png', "cards")
+                hand = self.card_checker.get_cards(img, "cards")
             else:
-                hand = self.card_checker.get_cards("left_hand.png", "cards")
+                hand = self.card_checker.get_cards(img, "cards")
             print(hand)
             move = self.determine_move(hand, dealer_hand, can_split=False)
             print(move)
+
             self.click_move(move)
+            if move == 'Double' or move=='Stand':
+                break
             time.sleep(1)
             self.update_game_images()
             self.update_splitted_hands(self.player_img_path)
-            arrow = self.find_image_on_screen('arrow.png', img, threshold=0.7)
+            arrow = self.find_image_on_screen('actions/arrow.png', img, threshold=0.85)['center']
+            print(arrow)
 
     def get_region(self):
         width = self.game_coordinates[1][0] - self.game_coordinates[0][0]
@@ -355,9 +377,7 @@ class BlackjackPlayer:
         # limit search region so it faster
         region = self.get_region()
 
-        location = self.find_image_on_screen(image_path, region=region)
-        if not location:
-            print('wtf')
+        location = self.find_image_on_screen(image_path, region=region)['center']
         curr_location = pyautogui.position()
         if not location:
             return False
@@ -378,14 +398,14 @@ class BlackjackPlayer:
 
     def is_round_end(self):
         region = self.get_region()
-        location = self.find_image_on_screen('actions/respin.png', region=region)
+        location = self.find_image_on_screen('actions/respin.png', region=region)['center']
         if location:
             return True
         return False
 
     def is_insurance(self):
         region = self.get_region()
-        location = self.find_image_on_screen('actions/no.png', region=region)
+        location = self.find_image_on_screen('actions/no.png', region=region)['center']
 
         if location:
             return True
