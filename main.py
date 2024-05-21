@@ -10,6 +10,8 @@ from sklearn.cluster import DBSCAN
 import time
 from humancursor import SystemCursor
 
+
+#TODO: add logging
 class CardChecker:
     def __init__(self):
         self.clusters = {}
@@ -134,11 +136,11 @@ class CardChecker:
 
 class BlackjackPlayer:
     def __init__(self):
-        self.antibot = False
+        self.antibot = True
         self.cursor = SystemCursor()
         self.game_coordinates = [(0, 0), (0, 0)]
         self.card_checker = CardChecker()
-        self.rounds = 400
+        self.rounds = 1000
         self.curr_round = 0
 
         self.board_img_path = "game_images/full_board.png"
