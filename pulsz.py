@@ -136,11 +136,11 @@ class CardChecker:
 
 class BlackjackPlayer:
     def __init__(self):
-        self.antibot = True
+        self.antibot = False
         self.cursor = SystemCursor()
         self.game_coordinates = [(0, 0), (0, 0)]
         self.card_checker = CardChecker()
-        self.rounds = 1000
+        self.rounds = 73
         self.curr_round = 0
 
         self.board_img_path = "game_images/full_board.png"
@@ -384,15 +384,18 @@ class BlackjackPlayer:
         if not location:
             return False
 
+        random_x = location[0] + random.randint(-30, 30)
+        random_y = location[1] + random.randint(-30, 30)
         if self.antibot:
-            random_x = location[0] + random.randint(-30, 30)
-            random_y = location[1] + random.randint(-30, 30)
             self.cursor.move_to([random_x, random_y])
             pyautogui.click(random_x, random_y)
             self.cursor.move_to([curr_location[0], curr_location[1]])
 
         else:
             pyautogui.click(location)
+
+            # move up 300 pixels so the mouse still on the screen and button highlighted
+            pyautogui.moveTo(random_x, random_y - random.randint(100, 500))
             time.sleep(.1)
             pyautogui.moveTo(curr_location[0], curr_location[1])
 
