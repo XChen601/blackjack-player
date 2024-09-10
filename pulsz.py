@@ -238,9 +238,9 @@ class BlackjackPlayer:
 
                     # Return coordinates in a dictionary
                     return {
-                        'top_left': (top_left_x, top_left_y),
-                        'center': (center_x, center_y),
-                        'bottom_right': (bottom_right_x, bottom_right_y)
+                        'top_left': (int(top_left_x), int(top_left_y)),
+                        'center': (int(center_x), int(center_y)),
+                        'bottom_right': (int(bottom_right_x), int(bottom_right_y))
                     }
 
         return {
